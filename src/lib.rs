@@ -14,7 +14,7 @@ mod with_id;
 pub use with_id::WithId;
 
 /// Bidirectional `key <-> id` store.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SlotBimap<K, V, I: Key = DefaultKey, S = FxBuildHasher> {
     data: SlotMap<I, Record<K, V>>,
     index: HashTable<I>,
@@ -30,32 +30,61 @@ struct Record<K, V> {
     value: V,
 }
 
+impl<K, V, I, S> Default for SlotBimap<K, V, I, S>
+where
+    I: Key,
+    S: Default,
+{
+    #[inline]
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            index: Default::default(),
+            hasher: Default::default(),
+        }
+    }
+}
+
 impl<K, V, I, S> SlotBimap<K, V, I, S>
 where
     K: Hash + Eq,
     I: Key,
     S: BuildHasher,
 {
+    /// Creates an empty [`SlotBimap`] with a default hasher.
+    #[inline]
+    #[must_use]
     pub fn new() -> Self
     where
         S: Default,
     {
         Self {
-            data: SlotMap::<I, _>::with_key(),
+            data: SlotMap::with_key(),
             index: HashTable::new(),
             hasher: S::default(),
         }
     }
 
+    /// Returns the id associated with `key`, if any.
+    #[inline]
+    #[must_use]
+    pub fn get_id(&self, key: &K) -> Option<I> {
+        let hash = self.hasher.hash_one(key);
+        self.index
+            .find(hash, |&id| &self.data[id].key == key)
+            .copied()
+    }
+
+    /// Inserts a `key`-`value` pair into the map and returns its id.
+    ///
+    /// If `key` is already present, its value is replaced and the previous
+    /// value is returned alongside the existing id. Otherwise a new entry is
+    /// created and `None` is returned alongside the freshly allocated id.
+    #[inline]
     pub fn insert(&mut self, key: K, value: V) -> WithId<Option<V>, I> {
         let hash = self.hasher.hash_one(&key);
 
-        let existing = self
-            .index
-            .find(hash, |&id| self.data[id].key == key)
-            .copied();
-
-        if let Some(id) = existing {
+        if let Some(id) = self.get_id(&key) {
             let old = self.data[id].replace_value(value);
             WithId::new(id, Some(old))
         } else {
@@ -66,6 +95,8 @@ where
         }
     }
 
+    /// Removes the entry identified by `id`, returning its value if present.
+    #[inline]
     pub fn remove(&mut self, id: I) -> Option<V> {
         let record = self.data.remove(id)?;
         let hash = self.hasher.hash_one(&record.key);
@@ -75,60 +106,103 @@ where
         Some(record.value)
     }
 
+    /// Returns a reference to the value identified by `id`, if present.
+    #[inline]
+    #[must_use]
     pub fn get(&self, id: I) -> Option<&V> {
         self.data.get(id).map(|record| &record.value)
     }
 
+    /// Returns a mutable reference to the value identified by `id`, if present.
+    #[inline]
+    #[must_use]
     pub fn get_mut(&mut self, id: I) -> Option<&mut V> {
         self.data.get_mut(id).map(|record| &mut record.value)
     }
 
+    /// Returns the value associated with `key` along with its id, if present.
+    #[inline]
+    #[must_use]
     pub fn get_by_key(&self, key: &K) -> Option<WithId<&V, I>> {
-        let hash = self.hasher.hash_one(key);
-        let &id = self.index.find(hash, |&id| &self.data[id].key == key)?;
+        let id = self.get_id(key)?;
         Some(WithId::new(id, &self.data[id].value))
     }
 
+    /// Returns a mutable reference to the value associated with `key` along with
+    /// its id, if present.
+    #[inline]
+    #[must_use]
     pub fn get_mut_by_key(&mut self, key: &K) -> Option<WithId<&mut V, I>> {
-        let hash = self.hasher.hash_one(key);
-        let &id = self.index.find(hash, |&id| &self.data[id].key == key)?;
+        let id = self.get_id(key)?;
         Some(WithId::new(id, &mut self.data[id].value))
+    }
+
+    /// Returns `true` if the map contains a value for the given `id`.
+    #[inline]
+    #[must_use]
+    pub fn contains(&self, id: I) -> bool {
+        self.data.contains_key(id)
+    }
+
+    /// Returns `true` if the map contains a value for the given `key`.
+    #[inline]
+    #[must_use]
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.get_id(key).is_some()
+    }
+
+    /// Returns the number of entries in the map.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns `true` if the map contains no entries.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 
     /// Gets the entry for `key`, computing the hash and lookup once so the
     /// result can be inspected or filled without a second probe.
+    #[inline]
+    #[must_use]
     pub fn entry(&mut self, key: K) -> Entry<'_, K, V, I, S> {
-        let hash = self.hasher.hash_one(&key);
-        match self
-            .index
-            .find(hash, |&id| self.data[id].key == key)
-            .copied()
-        {
+        match self.get_id(&key) {
             Some(id) => Entry::occupied(self, id),
-            None => Entry::vacant(self, hash, key),
+            None => {
+                let hash = self.hasher.hash_one(&key);
+                Entry::vacant(self, hash, key)
+            }
         }
     }
 
     /// Returns the value associated with `key`, inserting the result of `f` if
     /// it is not already present. `f` is only called on insertion.
+    #[inline]
     pub fn get_or_insert_with(&mut self, key: K, f: impl FnOnce() -> V) -> WithId<&mut V, I> {
         self.entry(key).or_insert_with(f)
     }
 
     /// Like [`get_or_insert_with`](Self::get_or_insert_with), but `f` receives a
     /// reference to the key being inserted.
+    #[inline]
     pub fn get_or_insert_with_key(&mut self, key: K, f: impl FnOnce(&K) -> V) -> WithId<&mut V, I> {
         self.entry(key).or_insert_with_key(f)
     }
 
     /// Returns the value associated with `key`, inserting `value` if it is not
     /// already present.
+    #[inline]
     pub fn get_or_insert(&mut self, key: K, value: V) -> WithId<&mut V, I> {
         self.entry(key).or_insert(value)
     }
 
     /// Returns the value associated with `key`, inserting `V::default()` if it
     /// is not already present.
+    #[inline]
     pub fn get_or_insert_default(&mut self, key: K) -> WithId<&mut V, I>
     where
         V: Default,
@@ -138,6 +212,7 @@ where
 
     /// Returns the id associated with `key`, inserting the result of `f` if it
     /// is not already present.
+    #[inline]
     pub fn get_or_insert_id_with(&mut self, key: K, f: impl FnOnce() -> V) -> I {
         self.entry(key).or_insert_with(f).id()
     }
@@ -145,6 +220,7 @@ where
     /// Returns the value associated with `key`, inserting the result of `f` if
     /// it is not already present. `f` is only called on insertion, and nothing
     /// is inserted if it returns `Err`.
+    #[inline]
     pub fn get_or_try_insert_with<E>(
         &mut self,
         key: K,
@@ -155,6 +231,7 @@ where
 
     /// Like [`get_or_try_insert_with`](Self::get_or_try_insert_with), but `f`
     /// receives a reference to the key being inserted.
+    #[inline]
     pub fn get_or_try_insert_with_key<E>(
         &mut self,
         key: K,
@@ -165,6 +242,7 @@ where
 
     /// Returns the id associated with `key`, inserting the result of `f` if it
     /// is not already present. Nothing is inserted if `f` returns `Err`.
+    #[inline]
     pub fn get_or_try_insert_id_with<E>(
         &mut self,
         key: K,
