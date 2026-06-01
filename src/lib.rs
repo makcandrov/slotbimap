@@ -139,7 +139,7 @@ where
     /// Returns the id associated with `key`, inserting the result of `f` if it
     /// is not already present.
     pub fn get_or_insert_id_with(&mut self, key: K, f: impl FnOnce() -> V) -> I {
-        *self.entry(key).or_insert_with(f).id()
+        self.entry(key).or_insert_with(f).id()
     }
 
     /// Returns the value associated with `key`, inserting the result of `f` if
@@ -170,6 +170,6 @@ where
         key: K,
         f: impl FnOnce() -> Result<V, E>,
     ) -> Result<I, E> {
-        Ok(*self.entry(key).or_try_insert_with(f)?.id())
+        Ok(self.entry(key).or_try_insert_with(f)?.id())
     }
 }
