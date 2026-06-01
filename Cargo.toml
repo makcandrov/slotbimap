@@ -1,0 +1,10 @@
+[package]
+name = "slotbimap"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hashbrown = "0.17"
+quick-impl = "0.2"
+rustc-hash = "2"
+slotmap = "1"
