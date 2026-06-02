@@ -1,8 +1,7 @@
-use std::hash::{BuildHasher, Hash};
+use std::hash::{BuildHasher, Hash, RandomState};
 
 use hashbrown::HashTable;
 use quick_impl::quick_impl_all;
-use rustc_hash::FxBuildHasher;
 use slotmap::SlotMap;
 
 pub use slotmap::{DefaultKey, Key, new_key_type};
@@ -15,11 +14,17 @@ pub use with_id::WithId;
 
 /// Bidirectional `key <-> id` store.
 #[derive(Debug)]
-pub struct SlotBimap<K, V, I: Key = DefaultKey, S = FxBuildHasher> {
+pub struct SlotBimap<K, V, I: Key = DefaultKey, S = RandomState> {
     data: SlotMap<I, Record<K, V>>,
     index: HashTable<I>,
     hasher: S,
 }
+
+pub type HashbrownSlotBimap<K, V, I = DefaultKey> =
+    SlotBimap<K, V, I, ::hashbrown::DefaultHashBuilder>;
+
+#[cfg(feature = "fx")]
+pub type FxSlotBimap<K, V, I = DefaultKey> = SlotBimap<K, V, I, ::rustc_hash::FxBuildHasher>;
 
 /// The value actually stored in `data`: the interned key, its value and its id.
 #[derive(Debug)]
