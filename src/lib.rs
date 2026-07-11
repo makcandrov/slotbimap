@@ -75,6 +75,20 @@ where
     #[must_use]
     pub fn get_id(&self, key: &K) -> Option<I> {
         let hash = self.hasher.hash_one(key);
+        self.get_id_hashed(hash, key)
+    }
+
+    /// Returns the key associated with `id`, if any.
+    #[inline]
+    #[must_use]
+    pub fn get_key(&self, id: I) -> Option<&K> {
+        self.data.get(id).map(|record| &record.key)
+    }
+
+    /// Returns the id associated with `key` given its precomputed `hash`.
+    #[inline]
+    #[must_use]
+    fn get_id_hashed(&self, hash: u64, key: &K) -> Option<I> {
         self.index
             .find(hash, |&id| &self.data[id].key == key)
             .copied()
@@ -89,7 +103,7 @@ where
     pub fn insert(&mut self, key: K, value: V) -> WithId<Option<V>, I> {
         let hash = self.hasher.hash_one(&key);
 
-        if let Some(id) = self.get_id(&key) {
+        if let Some(id) = self.get_id_hashed(hash, &key) {
             let old = self.data[id].replace_value(value);
             WithId::new(id, Some(old))
         } else {
