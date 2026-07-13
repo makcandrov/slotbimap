@@ -5,10 +5,4 @@ edition = "2024"
 
 [dependencies]
 hashbrown = "0.17"
-quick-impl = "0.2"
 slotmap = "1"
-
-rustc-hash = { version = "2", optional = true }
-
-[features]
-fx = ["dep:rustc-hash"]

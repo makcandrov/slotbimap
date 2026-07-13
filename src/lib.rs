@@ -1,7 +1,9 @@
-use std::hash::{BuildHasher, Hash, RandomState};
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![doc = include_str!("../README.md")]
+
+use std::hash::{BuildHasher, Hash};
 
 use hashbrown::HashTable;
-use quick_impl::quick_impl_all;
 use slotmap::SlotMap;
 
 pub use slotmap::{DefaultKey, Key, new_key_type};
@@ -14,25 +16,24 @@ pub use with_id::WithId;
 
 /// Bidirectional `key <-> id` store.
 #[derive(Debug)]
-pub struct SlotBimap<K, V, I: Key = DefaultKey, S = RandomState> {
+pub struct SlotBimap<K, V, I: Key = DefaultKey, S = hashbrown::DefaultHashBuilder> {
     data: SlotMap<I, Record<K, V>>,
     index: HashTable<I>,
     hasher: S,
 }
 
-pub type HashbrownSlotBimap<K, V, I = DefaultKey> =
-    SlotBimap<K, V, I, ::hashbrown::DefaultHashBuilder>;
-
-#[cfg(feature = "fx")]
-pub type FxSlotBimap<K, V, I = DefaultKey> = SlotBimap<K, V, I, ::rustc_hash::FxBuildHasher>;
-
 /// The value actually stored in `data`: the interned key, its value and its id.
 #[derive(Debug)]
-#[quick_impl_all(pub const get = "{}")]
 struct Record<K, V> {
     key: K,
-    #[quick_impl(replace)]
     value: V,
+}
+
+impl<K, V> Record<K, V> {
+    #[inline]
+    fn replace_value(&mut self, value: V) -> V {
+        std::mem::replace(&mut self.value, value)
+    }
 }
 
 impl<K, V, I, S> Default for SlotBimap<K, V, I, S>
