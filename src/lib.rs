@@ -137,6 +137,23 @@ where
         Some(record.value)
     }
 
+    /// Removes the entry associated with `key`, returning its value if present.
+    #[inline]
+    pub fn remove_by_key<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        let hash = self.hasher.hash_one(key);
+        let entry = self
+            .index
+            .find_entry(hash, |&id| self.data[id].key.borrow() == key)
+            .ok()?;
+        let (id, _) = entry.remove();
+        let record = self.data.remove(id).expect("indexed id is always present");
+        Some(record.value)
+    }
+
     /// Returns a reference to the value identified by `id`, if present.
     #[inline]
     #[must_use]
