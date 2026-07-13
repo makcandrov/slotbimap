@@ -2,6 +2,12 @@
 name = "slotbimap"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+repository = "https://github.com/makcandrov/slotbimap"
+homepage = "https://github.com/makcandrov/slotbimap"
+documentation = "https://docs.rs/slotbimap"
+description = "Bidirectional map between hashable keys and slotmap ids."
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 hashbrown = "0.17"
