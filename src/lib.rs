@@ -1,7 +1,10 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![doc = include_str!("../README.md")]
 
-use std::hash::{BuildHasher, Hash};
+use std::{
+    borrow::Borrow,
+    hash::{BuildHasher, Hash},
+};
 
 use hashbrown::HashTable;
 use slotmap::SlotMap;
@@ -74,9 +77,13 @@ where
     /// Returns the id associated with `key`, if any.
     #[inline]
     #[must_use]
-    pub fn get_id(&self, key: &K) -> Option<I> {
+    pub fn get_id<Q>(&self, key: &Q) -> Option<I>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let hash = self.hasher.hash_one(key);
-        self.get_id_hashed(hash, key)
+        self.get_id_hashed(key, hash)
     }
 
     /// Returns the key associated with `id`, if any.
@@ -89,9 +96,13 @@ where
     /// Returns the id associated with `key` given its precomputed `hash`.
     #[inline]
     #[must_use]
-    fn get_id_hashed(&self, hash: u64, key: &K) -> Option<I> {
+    fn get_id_hashed<Q>(&self, key: &Q, hash: u64) -> Option<I>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.index
-            .find(hash, |&id| &self.data[id].key == key)
+            .find(hash, |&id| self.data[id].key.borrow() == key)
             .copied()
     }
 
@@ -104,7 +115,7 @@ where
     pub fn insert(&mut self, key: K, value: V) -> WithId<Option<V>, I> {
         let hash = self.hasher.hash_one(&key);
 
-        if let Some(id) = self.get_id_hashed(hash, &key) {
+        if let Some(id) = self.get_id_hashed(&key, hash) {
             let old = self.data[id].replace_value(value);
             WithId::new(id, Some(old))
         } else {
@@ -143,7 +154,11 @@ where
     /// Returns the value associated with `key` along with its id, if present.
     #[inline]
     #[must_use]
-    pub fn get_by_key(&self, key: &K) -> Option<WithId<&V, I>> {
+    pub fn get_by_key<Q>(&self, key: &Q) -> Option<WithId<&V, I>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let id = self.get_id(key)?;
         Some(WithId::new(id, &self.data[id].value))
     }
@@ -152,7 +167,11 @@ where
     /// its id, if present.
     #[inline]
     #[must_use]
-    pub fn get_mut_by_key(&mut self, key: &K) -> Option<WithId<&mut V, I>> {
+    pub fn get_mut_by_key<Q>(&mut self, key: &Q) -> Option<WithId<&mut V, I>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         let id = self.get_id(key)?;
         Some(WithId::new(id, &mut self.data[id].value))
     }
@@ -167,7 +186,11 @@ where
     /// Returns `true` if the map contains a value for the given `key`.
     #[inline]
     #[must_use]
-    pub fn contains_key(&self, key: &K) -> bool {
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.get_id(key).is_some()
     }
 
@@ -190,12 +213,10 @@ where
     #[inline]
     #[must_use]
     pub fn entry(&mut self, key: K) -> Entry<'_, K, V, I, S> {
-        match self.get_id(&key) {
+        let hash = self.hasher.hash_one(&key);
+        match self.get_id_hashed(&key, hash) {
             Some(id) => Entry::occupied(self, id),
-            None => {
-                let hash = self.hasher.hash_one(&key);
-                Entry::vacant(self, hash, key)
-            }
+            None => Entry::vacant(self, hash, key),
         }
     }
 
