@@ -154,6 +154,13 @@ where
         Some(record.value)
     }
 
+    /// Removes all entries from the map.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.index.clear();
+    }
+
     /// Returns a reference to the value identified by `id`, if present.
     #[inline]
     #[must_use]
